@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 import torch
 from model.ncf import NCF
@@ -41,3 +42,4 @@ def recommend(user_id: int):
     scores.sort(key=lambda x: x[1], reverse=True)
 
     return {"recommendations": scores[:10]}
+
