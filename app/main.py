@@ -1,45 +1,50 @@
-
 from fastapi import FastAPI
 import torch
+import pickle
+import os
+
 from model.ncf import NCF
+from utils.preprocess import load_data
 
 app = FastAPI()
 
-NUM_USERS = 5
-NUM_ITEMS = 7
+# Load data info
+df, NUM_USERS, NUM_ITEMS, _, _ = load_data("data/interactions.csv")
 
-import os
+# Load mappings
+with open("mappings.pkl", "rb") as f:
+    user2id, item2id = pickle.load(f)
 
-model = NCF(NUM_USERS, NUM_ITEMS)
+# Device
+device = torch.device("cpu")
 
-try:
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_path = os.path.join(BASE_DIR, "model.pth")
+# Load model
+model = NCF(NUM_USERS, NUM_ITEMS).to(device)
 
-    print("Loading model from:", model_path)  # debug line
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+model_path = os.path.join(BASE_DIR, "model.pth")
 
-    model.load_state_dict(torch.load(model_path))
-    model.eval()
-    print("Model loaded successfully")
+model.load_state_dict(torch.load(model_path, map_location=device))
+model.eval()
 
-except Exception as e:
-    print("Error loading model:", e)
 @app.get("/")
 def home():
     return {"message": "API is running"}
 
 @app.get("/recommend/{user_id}")
-def recommend(user_id: int):
-    scores = []
+def recommend(user_id: int, k: int = 10):
 
-    for item_id in range(NUM_ITEMS):
-        user = torch.tensor([user_id])
-        item = torch.tensor([item_id])
+    if user_id not in user2id:
+        return {"message": "New user - no recommendations available"}
 
-        score = model(user, item).item()
-        scores.append((item_id, score))
+    user_idx = user2id[user_id]
 
-    scores.sort(key=lambda x: x[1], reverse=True)
+    user_tensor = torch.tensor([user_idx] * NUM_ITEMS)
+    item_tensor = torch.arange(NUM_ITEMS)
 
-    return {"recommendations": scores[:10]}
+    with torch.no_grad():
+        scores = model(user_tensor, item_tensor).numpy()
 
+    top_items = scores.argsort()[::-1][:k]
+
+    return {"recommended_item_ids": top_items.tolist()}

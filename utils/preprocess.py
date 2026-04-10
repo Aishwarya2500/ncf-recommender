@@ -1,33 +1,45 @@
-import numpy as np
 import pandas as pd
+import random
 
 def load_data(path):
     df = pd.read_csv(path)
 
-    user_ids = df['user_id'].unique()
-    item_ids = df['item_id'].unique()
+    # Fix column names
+    df = df.rename(columns={
+        "user_id": "user",
+        "item_id": "item",
+        "interaction": "label"
+    })
 
-    user_map = {u: i for i, u in enumerate(user_ids)}
-    item_map = {i: j for j, i in enumerate(item_ids)}
+    # Create mappings
+    user_ids = df['user'].unique()
+    item_ids = df['item'].unique()
 
-    df['user'] = df['user_id'].map(user_map)
-    df['item'] = df['item_id'].map(item_map)
+    user2id = {u: i for i, u in enumerate(user_ids)}
+    item2id = {i: j for j, i in enumerate(item_ids)}
 
-    return df, len(user_ids), len(item_ids), item_map
+    df['user'] = df['user'].map(user2id)
+    df['item'] = df['item'].map(item2id)
+
+    num_users = len(user2id)
+    num_items = len(item2id)
+
+    return df, num_users, num_items, user2id, item2id
 
 
-def negative_sampling(df, num_items, num_neg=2):
-    data = []
-
+def negative_sampling(df, num_items, num_negatives=2):
     user_item_set = set(zip(df['user'], df['item']))
+    rows = []
 
-    for (u, i) in user_item_set:
-        data.append((u, i, 1))  # positive
+    for (user, item) in user_item_set:
+        rows.append((user, item, 1))
 
-        for _ in range(num_neg):
-            j = np.random.randint(0, num_items)
-            while (u, j) in user_item_set:
-                j = np.random.randint(0, num_items)
-            data.append((u, j, 0))  # negative
+        for _ in range(num_negatives):
+            neg_item = random.randint(0, num_items - 1)
 
-    return pd.DataFrame(data, columns=['user', 'item', 'label'])
+            while (user, neg_item) in user_item_set:
+                neg_item = random.randint(0, num_items - 1)
+
+            rows.append((user, neg_item, 0))
+
+    return pd.DataFrame(rows, columns=['user', 'item', 'label'])
